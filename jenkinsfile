@@ -2,6 +2,12 @@
 // Just an example of some of the tasks you might add to CI.
 
 
+// A quick regex to enforce conventional commits. Commitizen or some official linter is probably better.
+script{
+  if [ "$IS_GIT_MERGE" = false ]; then
+          COMMIT_MSG=$(git log -1 --format=%s) && echo $COMMIT_MSG | grep -iE "(build|ci|docs|feat|fix|perf|refactor|style|test|chore|revert|bump)\!?(\([a-zA-Z0-9 _-]*\))?:(\s.*)"
+          fi
+}
 // Ignore the build if the merge commit is a version increment from the CI
 // This prevents infinite loops if you use the same job for version increment.
 script {
