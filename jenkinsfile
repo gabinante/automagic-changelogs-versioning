@@ -1,0 +1,67 @@
+// This is not a full jenkinsfile.
+// Just an example of some of the tasks you might add to CI.
+
+
+// Ignore the build if the merge commit is a version increment from the CI
+// This prevents infinite loops if you use the same job for version increment.
+script {
+    commit_msg = sh(returnStdout: true, script: 'git log -1 --oneline').trim()
+    println(commit_msg)
+
+
+    if(commit_msg.contains("ci: automated version update")) {
+      sh('echo "skipping CI"')
+      skipCI = true
+    }
+
+
+// Now your stages can include the following conditional:
+stage('Do a thing') {
+    when {
+      allOf {
+        not {expression { skipCI }}
+      }
+    steps {}
+}
+
+
+// update the version of the module. This assumes the $ARTIFACT_NAME has been defined
+// by a previous job stage -- like whichever one is pushing the artifact to a repository
+stage('Push Module Version') {
+
+when {
+  allOf {
+    not {expression { skipCI }}
+      environment name: 'IS_GIT_MERGE', value: 'true'
+      }
+}
+steps {
+
+  // Clean Workspace
+  cleanWs()
+
+  //Checkout repo with main branch
+  checkout([$class: 'GitSCM', branches: [[name: 'main']],
+        extensions: [[$class: 'LocalBranch', localBranch: 'main'],
+        [$class: 'CheckoutOption', timeout: 1],
+        [$class: 'UserIdentity', email: 'git-ci-user@company.com', name: 'git-ci-user']],
+        userRemoteConfigs: [[credentialsId: 'git-ci-user',
+        url: 'git@git.corp.whatever:repo/${JOB_NAME}']]])
+
+        withCredentials([sshUserPrivateKey(credentialsId: 'git-ci-user', keyFileVariable: 'GITHUB_KEY')]) {
+            withEnv(["GIT_SSH_COMMAND=ssh -i $GITHUB_KEY -o StrictHostKeyChecking=no"]) {
+script {
+                              sh '''
+                                echo $ARTIFACT_NAME
+                                VERSION=$(echo $ARTIFACT_NAME | awk -F '-b' '{print $NF}')
+                                echo $VERSION
+                                git branch
+                                echo $VERSION > version.txt
+                                git config --local user.name 'git-ci-user'
+                                git add version.txt
+                                git commit -m 'ci: update module version'
+                                git push git@git.corp.whatever:repo/${JOB_NAME} main
+                                '''
+                        }
+
+//
